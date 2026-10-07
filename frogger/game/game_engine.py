@@ -3,7 +3,7 @@
 GameEngine: owns the frog and all vehicles, and runs one frame's worth
 of game logic.
 
-Task 2: adds a three-lives system with respawn and Game Over handling.
+Task 3: adds goal detection, scoring, and a win state.
 """
 
 import random
@@ -17,14 +17,17 @@ from game.renderer import (
     GRID_COLS, GRID_ROWS, GOAL_ROW, ROAD_ROWS, START_ROW, CELL_SIZE, WIDTH, HEIGHT,
 )
 
-LANE_SPEEDS = [1.5, -2, 2, -2.5, 1.5, -2]   # one entry per road row, alternating direction
+LANE_SPEEDS = [1.5, -2, 2, -2.5, 1.5, -2]
 MAX_LIVES = 3
+GOALS_TO_WIN = 3
 
 
 class GameEngine:
     def __init__(self):
         self.lives = MAX_LIVES
         self.game_over = False
+        self.score = 0
+        self.won = False
         self._build_entities()
 
     def _build_entities(self):
@@ -39,33 +42,45 @@ class GameEngine:
         self.vehicles = []
         for i, row in enumerate(ROAD_ROWS):
             speed = LANE_SPEEDS[i % len(LANE_SPEEDS)]
-            vehicle_width = 40 if i % 2 == 0 else 70   # mix of cars and wider trucks
+            vehicle_width = 40 if i % 2 == 0 else 70
             spacing = 300
             count = 2
 
-            # Try a few random phases and keep the first one that doesn't
-            # already overlap the frog's starting column - guarantees a
-            # safe first lane instead of leaving it to chance.
             for _attempt in range(20):
                 phase = random.randint(0, spacing - 1)
                 positions = []
                 safe = True
+
                 for n in range(count):
                     offset = phase + n * spacing
                     x = offset if speed > 0 else WIDTH - offset - vehicle_width
                     positions.append(x)
-                    if not (x + vehicle_width <= frog_x_range[0] or x >= frog_x_range[1]):
+
+                    if not (
+                        x + vehicle_width <= frog_x_range[0]
+                        or x >= frog_x_range[1]
+                    ):
                         safe = False
+
                 if safe:
                     break
 
             for x in positions:
-                self.vehicles.append(Vehicle(x=x, row=row, width=vehicle_width,
-                                              height=CELL_SIZE - 8, speed=speed))
+                self.vehicles.append(
+                    Vehicle(
+                        x=x,
+                        row=row,
+                        width=vehicle_width,
+                        height=CELL_SIZE - 8,
+                        speed=speed,
+                    )
+                )
 
     def reset_game(self):
         self.lives = MAX_LIVES
         self.game_over = False
+        self.score = 0
+        self.won = False
         self._build_entities()
 
     def handle_keydown(self, key):
@@ -73,7 +88,7 @@ class GameEngine:
             self.reset_game()
             return
 
-        if self.game_over:
+        if self.game_over or self.won:
             return
 
         if key == pygame.K_UP:
@@ -86,7 +101,7 @@ class GameEngine:
             self.frog.move(1, 0)
 
     def update(self):
-        if self.game_over:
+        if self.game_over or self.won:
             return
 
         for v in self.vehicles:
@@ -101,8 +116,14 @@ class GameEngine:
             else:
                 self.frog.reset()
 
-        if not self.game_over and self.frog.row == GOAL_ROW:
+            return
+
+        if self.frog.row == GOAL_ROW:
+            self.score += 1
             self.frog.reset()
+
+            if self.score >= GOALS_TO_WIN:
+                self.won = True
 
     def draw(self, surface, font):
         from game import renderer
@@ -116,7 +137,21 @@ class GameEngine:
             (10, 10)
         )
 
-        if self.game_over:
+        renderer.draw_text(
+            surface,
+            font,
+            f"Score: {self.score}/{GOALS_TO_WIN}",
+            (10, 34)
+        )
+
+        if self.won:
+            renderer.draw_text(
+                surface,
+                font,
+                "YOU WIN! Press R to restart.",
+                (WIDTH // 2 - 100, HEIGHT // 2)
+            )
+        elif self.game_over:
             renderer.draw_text(
                 surface,
                 font,
